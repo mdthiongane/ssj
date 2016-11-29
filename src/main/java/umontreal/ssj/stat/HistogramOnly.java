@@ -25,29 +25,24 @@ package umontreal.ssj.stat;
  * limitations under the License.
  *
  */
-//package umontreal.ssj.stat;
+// package umontreal.ssj.stat;
 //import umontreal.ssj.stat.*;
 //import java.util.logging.Level;
 import java.util.logging.Logger;
 import umontreal.ssj.util.PrintfFormat;
 
 /**
- * This class is an extension of @ref Tally which gives a more detailed view of the observations
- * statistics. The individual observations are assumed to fall into different bins (boxes) of equal
- * width on an interval. The total number of observations falling into the bins are kept in an array
- * of counters. This is useful, for example, if one wish to build a histogram from the observations.
- * One must access the array of bin counters to compute quantities not supported by the methods
- * in @ref Tally.
- *
- * *Never add or remove observations directly* on the array of bin counters because this would put
- * the @ref Tally counters in an inconsistent state.
+ * This class is similar to @ref TallyHistogram, except that it does not maintain the min, max,
+ * average, and variance of the observations. Only the counters for the histogram are maintained.
+ * There are also no extra virtual bins on the left and on the right to count the observations that
+ * fall outside [a,b].
  *
  * <div class="SSJ-bigskip"></div>
  */
-public class TallyHistogram extends Tally {
+public class HistogramOnly extends StatProbe implements Cloneable {
+	protected int numObs;  // number of observations
 	protected int numBins; // number of bins
-	protected int[] count; // counter: num of values in bin[i].
-	// count[0] and count[numBins] count the values outside interval.
+	protected int[] count;   // count[j] = num obs in bin[j], j=0,...,numbins-1.
 	protected double m_h; // width of 1 bin
 	protected double m_a; // left boundary of first bin
 	protected double m_b; // right boundary of last bin
@@ -65,12 +60,12 @@ public class TallyHistogram extends Tally {
 	 *            left boundary of interval
 	 * @param b
 	 *            right boundary of interval
-	 * @param numBins
+	 * @param s
 	 *            number of bins
 	 */
-	public TallyHistogram(double a, double b, int numBins) {
+	public HistogramOnly(double a, double b, int s) {
 		super();
-		init(a, b, numBins);
+		init(a, b, s);
 	}
 
 	/**
@@ -82,49 +77,55 @@ public class TallyHistogram extends Tally {
 	 *            left boundary of interval
 	 * @param b
 	 *            right boundary of interval
-	 * @param numBins
+	 * @param s
 	 *            number of bins
 	 */
-	public TallyHistogram(String name, double a, double b, int numBins) {
-		super(name);
-		init(a, b, numBins);
+	public HistogramOnly(String name, double a, double b, int s) {
+		super();
+		this.name = name;
+		init(a, b, s);
 	}
 
 	/**
 	 * Initializes this object. Divide the interval @f$[a,b]@f$ into
 	 * 
 	 * @f$s@f$ bins of equal width and initializes all counters to 0.
-	 * @param numBins
+	 * @param s
 	 *            number of bins
 	 * @param a
 	 *            left boundary of interval
 	 * @param b
 	 *            right boundary of interval
 	 */
-	public void init(double a, double b, int numBins) {
+	public void init(double a, double b, int s) {
 		/*
-		 * The counters count[1] to count[s] contains the number of observations falling in the
-		 * interval [a, b]. count[0] is the number of observations < a, and count[numBins+1] is the
-		 * number of observations > b.
+		 * The counters co[1] to co[s] contains the number of observations falling in the interval
+		 * [a, b]. co[0] is the number of observations < a, and co[s+1] is the number of
+		 * observations > b.
 		 */
-		super.init();
 		if (b <= a)
 			throw new IllegalArgumentException("   b <= a");
-		count = new int[numBins + 2];
-		this.numBins = numBins;
-		m_h = (b - a) / numBins;
+		count = new int[s];
+		numBins = s;
+		m_h = (b - a) / s;
 		m_a = a;
 		m_b = b;
-		for (int i = 0; i <= numBins + 1; i++)
+		for (int i = 0; i < s; i++)
 			count[i] = 0;
+		numObs = 0;
+	}
+
+	public void init() {
+		for (int i = 0; i < numBins; i++)
+			count[i] = 0;
+		numObs = 0;
 	}
 
 	/**
 	 * Fills this object from the first n observations in array obs.
 	 */
 	public void fillFromArray(double[] obs, int numObs) {
-		super.init();
-		for (int i = 0; i <= numBins + 1; i++)
+		for (int i = 0; i < numBins; i++)
 			count[i] = 0;
 		for (int i = 0; i < numObs; i++)
 			add(obs[i]);
@@ -153,72 +154,71 @@ public class TallyHistogram extends Tally {
 	 *            observation value
 	 */
 	public void add(double x) {
-		super.add(x);
-		if (x < m_a)
-			++count[0];
-		else if (x > m_b)
-			++count[1 + numBins];
-		else {
-			int i = 1 + (int) ((x - m_a) / m_h);
-			++count[i];
-		}
+		numObs++;
+		if ((x >= m_a) & (x <= m_b))
+			++count[(int) ((x - m_a) / m_h)];
+	}
+
+	/**
+	 * Returns the number of observations given to histogram since its last initialization.
+	 * 
+	 * @return the number of collected observations
+	 */
+	public int numberObs() {
+		return numObs;
 	}
 
 	/**
 	 * Remove empty bins in the tails (left and right), without changing the bin size.
 	 */
-	public TallyHistogram trimHistogram() {
-		TallyHistogram image = (TallyHistogram) super.clone();
-
-		int i = 1;
-		int j = numBins; // number of bins in the initial histogram
-		int cpL = 0; // number of empty bin from left initialized to zero
-		int cpR = 0; // number of empty bin from right initialized to zero
-		while (count[i] == 0) {
-			i++;
+	public void trimHistogram() {
+		int cpL = 0; // number of empty bins from left
+		int cpR = 0; // number of empty bins from right
+		while (count[cpL] == 0)
 			cpL++;
-		}
-		while (count[j] == 0) {
-			j--;
+		while (count[numBins - cpR - 1] == 0)
 			cpR++;
+		if (cpL + cpR > 0) {
+			numBins -= cpL + cpR;
+			int[] coco = new int[numBins];
+			System.arraycopy(count, cpL, coco, 0, numBins);
+			count = coco;
+			m_a = m_a + (cpL * m_h);
+			m_b = m_b - (cpR * m_h);
 		}
-		int[] coco = new int[2 + numBins - cpL - cpR];
-		System.arraycopy(count, i, coco, 1, j - i + 1);
-		System.arraycopy(count, 0, coco, 0, 1);
-		System.arraycopy(count, count.length - 1, coco, coco.length - 1, 1);
-		image.count = coco;
-		image.m_h = m_h;
-		image.m_a = m_a + (cpL * m_h);
-		image.m_b = m_b - (cpR * m_h);
-		image.numBins = numBins - cpL - cpR;
-		return image;
 	}
 
 	/**
 	 * Merges this histogram with the other histogram, by adding the bin counts of the two
-	 * histograms.
+	 * histograms. Returns the result in a new histogram.
 	 * 
 	 * @param other
 	 *            the histogram to add
 	 * 
 	 *            Returns the merged histogram.
 	 */
-	public TallyHistogram addHistograms(TallyHistogram other) {
+	public HistogramOnly addHistograms(HistogramOnly other) {
 		if (this.numBins != other.numBins)
-			throw new IllegalArgumentException("different number of bin in two histogram to merge");
-		TallyHistogram image = (TallyHistogram) super.clone();
-		int[] countNew = new int[2 + numBins];
-		System.arraycopy(count, 0, countNew, 0, 2 + numBins);
-		int coOther[] = other.getCounters();
-		for (int i = 0; i < countNew.length; i++)
-			countNew[i] = countNew[i] + coOther[i];
-		image.count = countNew;
+			throw new IllegalArgumentException(
+			        "trying to add two histograms with different numbers of bin");
+		HistogramOnly image;
+		try {
+			image = (HistogramOnly) super.clone();
+		} catch (CloneNotSupportedException e) {
+			throw new IllegalStateException("Tally can't clone");
+		}
+		int[] coco = new int[numBins];
+		System.arraycopy(count, 0, coco, 0, numBins);
+		int countOther[] = other.getCounters();
+		for (int i = 0; i < numBins; i++)
+			coco[i] = count[i] + countOther[i];
+		image.count = coco;
 		image.m_h = m_h;
 		image.m_a = m_a;
 		image.m_b = m_b;
 		image.numBins = numBins;
+		image.numObs = numObs + other.numObs;
 		return image;
-
 	}
 
 	/**
@@ -226,23 +226,27 @@ public class TallyHistogram extends Tally {
 	 * will be $\lceil m/g\rceil$. The last bin may regroup less than $g$ original bins if $m$ is
 	 * not a multiple of $g$
 	 **/
-	public TallyHistogram aggregateBins(int g) {
-		TallyHistogram image = (TallyHistogram) super.clone();
-		double numB = Math.ceil((double) numBins / (double) g);
-		int numBinsNew = (int) numB;
-		int[] countNew = new int[2 + numBinsNew];
-		int b = 1;
-		for (int j = 1; j < numBinsNew; j++) {
+	public HistogramOnly aggregateBins(int g) {
+		HistogramOnly image;
+		try {
+			image = (HistogramOnly) super.clone();
+		} catch (CloneNotSupportedException e) {
+			throw new IllegalStateException("Tally can't clone");
+		}
+		int numBinsNew = (int) Math.ceil((double) numBins / (double) g);
+		// int[] coco = new int[numBins];
+		// System.arraycopy(count, 0, coco, 0, numBins);
+		int[] countNew = new int[numBinsNew];
+		int b = 0;
+		for (int j = 0; j < numBinsNew - 1; j++) {
 			for (int i = b; i < b + g; i++)
-				countNew[j] = countNew[j] + count[i];
+				countNew[j] += count[i];
 			b = b + g;
 		}
-		while (b < numBins - 1) {
-			countNew[numBinsNew] = countNew[numBinsNew] + count[b];
+		while (b < numBins) {
+			countNew[numBinsNew] += count[b];
 			b++;
 		}
-		countNew[0] = count[0];
-		countNew[numBinsNew - 1] = count[numBins - 1];
 		image.count = countNew;
 		image.m_h = m_h * g;
 		image.m_a = m_a;
@@ -294,26 +298,23 @@ public class TallyHistogram extends Tally {
 	}
 
 	/**
-	 * Returns the width @f$h@f$ of rectangles.
-	 * 
-	 * @return the width of rectangles
-	 */
-	public double getH() {
-		return m_h;
-	}
-
-	/**
 	 * Clones this object and the array which stores the counters.
 	 */
-	public TallyHistogram clone() {
-		TallyHistogram image = (TallyHistogram) super.clone();
-		int[] coco = new int[2 + numBins];
-		System.arraycopy(count, 0, coco, 0, 2 + numBins);
-		image.count = coco;
+	public HistogramOnly clone() {
+		HistogramOnly image;
+		try {
+			image = (HistogramOnly) super.clone();
+		} catch (CloneNotSupportedException e) {
+			throw new IllegalStateException("Tally can't clone");
+		}
+		int[] countNew = new int[numBins];
+		System.arraycopy(count, 0, countNew, 0, numBins);
+		image.count = countNew;
 		image.m_h = m_h;
 		image.m_a = m_a;
 		image.m_b = m_b;
 		image.numBins = numBins;
+		image.numObs = numObs;
 		return image;
 	}
 
@@ -325,20 +326,40 @@ public class TallyHistogram extends Tally {
 		sb.append("---------------------------------------" + PrintfFormat.NEWLINE);
 		sb.append(name + PrintfFormat.NEWLINE);
 		sb.append("Interval = [ " + m_a + ", " + m_b + " ]" + PrintfFormat.NEWLINE);
-		sb.append("Number of bins = " + numBins + " + 2" + PrintfFormat.NEWLINE);
+		sb.append("Number of bins = " + numBins + PrintfFormat.NEWLINE);
 		sb.append(PrintfFormat.NEWLINE + "Counters = {" + PrintfFormat.NEWLINE);
-		sb.append("   (-inf, " + PrintfFormat.f(6, 3, m_a) + ")    " + count[0]
-		        + PrintfFormat.NEWLINE);
-		for (int i = 1; i <= numBins; i++) {
+		for (int i = 0; i < numBins; i++) {
 			double a = m_a + (i - 1) * m_h;
 			double b = m_a + i * m_h;
 			sb.append("   (" + PrintfFormat.f(6, 3, a) + ", " + PrintfFormat.f(6, 3, b) + ")    "
 			        + count[i] + PrintfFormat.NEWLINE);
 		}
-		sb.append("   (" + PrintfFormat.f(6, 3, m_b) + ", inf)    " + count[numBins + 1]
-		        + PrintfFormat.NEWLINE);
 		sb.append("}" + PrintfFormat.NEWLINE);
 		return sb.toString();
+	}
+
+	@Override
+	public double average() {
+		// TODO Auto-generated method stub
+		throw new IllegalStateException("HistogramOnly.average() is not supported.");
+	}
+
+	@Override
+	public String report() {
+		// TODO Auto-generated method stub
+		throw new IllegalStateException("HistogramOnly.report() is not supported.");
+	}
+
+	@Override
+	public String shortReport() {
+		// TODO Auto-generated method stub
+		throw new IllegalStateException("HistogramOnly.shortReport() is not supported.");
+	}
+
+	@Override
+	public String shortReportHeader() {
+		// TODO Auto-generated method stub
+		throw new IllegalStateException("HistogramOnly.shortReportHeader() is not supported.");
 	}
 
 }

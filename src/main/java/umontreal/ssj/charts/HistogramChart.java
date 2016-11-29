@@ -39,6 +39,7 @@ import   java.util.ListIterator;
 import   java.util.Locale;
 import   java.util.Formatter;
 import   javax.swing.JFrame;
+import   umontreal.ssj.stat.ScaledHistogram;
 
 /**
  * This class provides tools to create and manage histograms. The
@@ -218,6 +219,54 @@ public class HistogramChart extends XYChart {
       ((HistogramSeriesCollection) dataset).setBins(0, nb);
    }
 
+    
+    public HistogramChart (String title, String XLabel, String YLabel,
+            ScaledHistogram_old scaleTallyHist) {
+    //public HistogramChart (String title, String XLabel, String YLabel,
+     //       int[] count, double[] bound) {
+    	super();
+
+    	double count[] = scaleTallyHist.getCountersASH();
+    	double a= scaleTallyHist.getTallyHistogram().getA();
+    	double b= scaleTallyHist.getTallyHistogram().getB();
+    	int s= scaleTallyHist.getTallyHistogram().getNumBins();
+    	double h2=(b-a)/s;
+    	
+    	double bound[]=new double[count.length+1];
+    	for(int i=0;i<s+1;i++)
+    	{   double val=a+i*h2;
+    		if(val<=b)
+    		   bound[i]=a+i*h2;System.out.println(a+i*h2);}
+    	
+    	if (bound.length != count.length + 1)
+    	throw new IllegalArgumentException (
+    			"bound.length must be equal to count.length + 1");
+    	final int nb = count.length;
+    	int sum = 0;
+    	for (int i = 0 ; i < nb; i++) sum +=count[i];
+    	double[] data = new double [sum];
+
+    	int k = 0;
+    	double h;
+    	for (int i = 0 ; i < nb; i++) {
+    	h = bound[i + 1] - bound[i];
+    	if (count[i] > 0)
+    	h /= count[i];
+    	if (i == nb - 1) {
+    	for (int j = 0 ; j < count[i] ; j++)
+    	data[k++] = bound[i + 1] - j*h;
+    	} else {
+    		for (int j = 0 ; j < count[i] ; j++)
+    	data[k++] = bound[i] + j*h;
+    	}
+    	}
+
+dataset = new HistogramSeriesCollection(data, sum);
+init (title, XLabel, YLabel);
+((HistogramSeriesCollection) dataset).setBins(0, nb);
+}
+    
+    
     /**
      * Initializes a new `HistogramChart` instance with data arrays
      * contained in each  @ref umontreal.ssj.stat.TallyHistogram object.
@@ -230,12 +279,17 @@ public class HistogramChart extends XYChart {
      *  @param tallies      series of observation sets.
      */
     public HistogramChart (String title, String XLabel, String YLabel,
-                           TallyHistogram... tallies) {
+                           TallyHistogram_old... tallies) {
       super();
       dataset = new HistogramSeriesCollection(tallies);
-      init (title, XLabel, YLabel);
+      for(int i=0;i<dataset.seriesCollection.getSeriesCount();i++)
+    	  init (title, XLabel, YLabel);
    }
 
+    
+    
+    
+    
    public void setAutoRange (boolean right, boolean top)  {
          throw new UnsupportedOperationException(
             "You can't use setAutoRange with HistogramChart class, use setAutoRange().");

@@ -64,7 +64,7 @@ public class HistogramSeriesCollection extends SSJXYSeriesCollection {
       return numbins;
    }
 
-   private double[] countersToArray (TallyHistogram hist) {
+   private double[] countersToArray (TallyHistogram_old hist) {
       final int nb = hist.getNumBins();
       final double binwidth = (hist.getB() - hist.getA()) / nb;
       int[] count = hist.getCounters();
@@ -244,7 +244,7 @@ public class HistogramSeriesCollection extends SSJXYSeriesCollection {
     * represented in the chart.
     *  @param tallies      series of point sets.
     */
-   public HistogramSeriesCollection (TallyHistogram... tallies) {
+   public HistogramSeriesCollection (TallyHistogram_old... tallies) {
       seriesCollection = new CustomHistogramDataset();
       renderer = new XYBarRenderer();
       CustomHistogramDataset tempSeriesCollection = (CustomHistogramDataset)seriesCollection;
@@ -540,6 +540,7 @@ public class HistogramSeriesCollection extends SSJXYSeriesCollection {
    public void setOutlineWidth (int series, double outline) {
       this.lineWidth[series] = outline;
    }
+  
    public String toLatex (double XScale, double YScale, double XShift,
                           double YShift, double xmin, double xmax,
                           double ymin, double ymax) {

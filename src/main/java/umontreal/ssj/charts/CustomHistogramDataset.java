@@ -59,7 +59,8 @@ public class CustomHistogramDataset extends AbstractIntervalXYDataset
    public CustomHistogramDataset()
    {
       list = new ArrayList();
-      type = HistogramType.FREQUENCY;
+     // type = HistogramType.FREQUENCY;
+      type= HistogramType.RELATIVE_FREQUENCY;
    }
 
    /**
